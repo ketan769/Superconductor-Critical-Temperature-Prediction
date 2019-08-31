@@ -1,0 +1,253 @@
+---
+title: "Project Final"
+author: "Ketan Sethi"
+date: "April 18, 2019"
+output:
+  word_document: default
+  html_document: default
+---
+
+
+```{r}
+library(ISLR)
+library(tree)
+library(class)
+library(MASS)
+library(boot)
+library(caTools)
+library(GGally)
+library(glmnet)
+library(car)
+
+#Loading the Data
+setwd('C:\\Users\\ACER\\Desktop\\Superconductivity') 
+sc_data=read.csv ("Superconductor1.csv")
+sc_data1=sc_data[, -c(1,2,3,4,6,10,11,13,14,16,17,20,21,23,24,26,30,31,32,33,35,37,40,41,42,45,48,49,50,52,53,54,56,58,59,61,63,65,68,70,72,74,75,77,78,80)]
+split=sample.split(sc_data1,SplitRatio = 0.8)
+sc_data1_Train=subset(sc_data1,split=="TRUE")
+sc_data1_Test=subset(sc_data1,split=="FALSE")
+attach(sc_data1_Train)
+sc_linear=lm(critical_temp~.-wtd_gmean_fie-range_fie-wtd_entropy_atomic_radius-wtd_std_ElectronAffinity-mean_ThermalConductivity-wtd_range_ThermalConductivity-entropy_Valence+I(wtd_mean_Valence^2)+I(wtd_std_ThermalConductivity^2)-wtd_std_ThermalConductivity-wtd_range_atomic_radius-wtd_range_fie,data  = sc_data1_Train)
+summary(sc_linear)
+pred_linear=predict(sc_linear,sc_data1_Test)
+
+
+#R^2
+RSS=(mean((sc_data1_Test$critical_temp-pred_linear)^2))
+TSS=(mean((sc_data1_Test$critical_temp-(mean(sc_data1_Test$critical_temp)))^2))
+R_square=1-(RSS/TSS)
+print(R_square)
+
+```
+
+
+```{r}
+#Ridge
+x=model.matrix(critical_temp~.,sc_data1_Train)[,-1]
+y=sc_data1_Train$critical_temp
+x_test=model.matrix(critical_temp~.,sc_data1_Test)[,-1]
+y_test=sc_data1_Test$critical_temp
+
+grid=10^seq(5,-5,length=100)
+sc_ridge=glmnet(x,y,alpha = 0,lambda = grid)
+set.seed(1)
+cv_out=cv.glmnet(x,y,alpha=0)
+plot(cv_out)
+bestlam=cv_out$lambda.min
+pred_ridge=predict(sc_ridge,s=bestlam,newx = x_test)
+
+
+#R^2
+RSS=(mean((sc_data1_Test$critical_temp-pred_ridge)^2))
+TSS=(mean((sc_data1_Test$critical_temp-(mean(sc_data1_Test$critical_temp)))^2))
+R_square=1-(RSS/TSS)
+print(R_square)
+```
+```{r}
+  
+x=model.matrix(critical_temp~.,sc_data1_Train)[,-1]
+y=sc_data1_Train$critical_temp
+x_test=model.matrix(critical_temp~.,sc_data1_Test)[,-1]
+y_test=sc_data1_Test$critical_temp
+
+grid=10^seq(10,-2,length=100)
+
+sc_lasso=glmnet(x,y,alpha = 1,lambda = grid)
+dim(coef(sc_ridge))
+ 
+set.seed(1)
+cv_out=cv.glmnet(x,y,alpha=1)
+plot(cv_out)
+
+
+bestlam=cv_out$lambda.1se
+
+lasso_coef=predict(sc_lasso,s=bestlam,type ="coefficients")
+
+
+pred_lasso=predict(sc_ridge,s=bestlam,newx = x_test)
+result=data.frame(sc_data1_Test$critical_temp,pred_lasso)
+lasso_coef
+#R^2
+RSS=(mean((sc_data1_Test$critical_temp-pred_lasso)^2))
+TSS=(mean((sc_data1_Test$critical_temp-(mean(sc_data1_Test$critical_temp)))^2))
+R_square=1-(RSS/TSS)
+print(R_square)
+
+
+
+```
+
+```{r}
+#TREES
+
+#Decision Tree
+sc_tree=tree(sc_data1_Train$critical_temp~.,data=sc_data1_Train)
+plot(sc_tree)
+text(sc_tree,pretty = 0)
+pred_tree=predict(sc_tree,sc_data1_Test)
+
+
+#R^2
+RSS=(mean((sc_data1_Test$critical_temp-pred_tree)^2))
+TSS=(mean((sc_data1_Test$critical_temp-(mean(sc_data1_Test$critical_temp)))^2))
+R_square=1-(RSS/TSS)
+print(R_square)
+
+
+ 
+# # #pruning
+# prune_model=cv.tree(sc_tree)
+# plot(prune_model$size,prune_model$dev,type='b')
+# text(prune_model1,pretty=0)
+# test_y=Carseats1_Test$stabf
+# pred_y=predict(prune_model1,Carseats1_Test,type="class")
+# table(pred_y,test_y)
+# mean(pred_y==test_y)
+
+
+
+
+```
+```{r}
+
+#Bagging
+
+split=sample.split(sc_data,SplitRatio = 0.8)
+sc_data2_Train=subset(sc_data,split=="TRUE")
+sc_data2_Test=subset(sc_data,split=="FALSE")
+
+library(randomForest)
+model_rf=randomForest(sc_data2_Train$critical_temp~.,data=sc_data2_Train,mtry=13,ntree=500)
+varImpPlot(model_rf)
+
+pred_y=predict(model_rf,sc_data1_Test)
+
+#R^2
+RSS=(mean((sc_data1_Test$critical_temp-pred_y)^2))
+TSS=(mean((sc_data1_Test$critical_temp-(mean(sc_data1_Test$critical_temp)))^2))
+R_square=1-(RSS/TSS)
+print(R_square)
+
+
+
+```
+
+
+
+```{r}
+library(xgboost)
+
+setwd('C:\\Users\\ACER\\Desktop\\Superconductivity') 
+sc_data=read.csv ("Superconductor1.csv")
+split=sample.split(sc_data1,SplitRatio = 0.8)
+sc_data1_Train=subset(sc_data1,split=="TRUE")
+sc_data1_Test=subset(sc_data1,split=="FALSE")
+
+
+sc_data2_Train=sc_data1_Train[,-36]
+sc_data2_Test=sc_data1_Test[,-36]
+
+
+sc_train_matrix=xgb.DMatrix(data=as.matrix(sc_data2_Train),label=sc_data1_Train$critical_temp)
+sc_test_matrix=xgb.DMatrix(data=as.matrix(sc_data2_Test),label=sc_data1_Test$critical_temp)
+
+
+nc=length(sc_data1_Train$critical_temp)
+
+grid
+
+xgb_param=list("objective"="reg:linear",
+               "eval_metric"="rmse")
+
+watchlist=list(train=sc_train_matrix,test=sc_test_matrix)
+
+XGB_model=xgb.train(params=xgb_param,data=sc_train_matrix,eta=0.05,max_depth=16,nrounds=300,subsample=1,watchlist = watchlist)
+
+e=data.frame(XGB_model$evaluation_log)
+plot(e$iter,e$train_rmse)
+lines(e$iter,e$test_rmse,col="red")
+
+
+pred_q=predict(XGB_model,sc_test_matrix)
+pred_q=data.frame(pred_q)
+result=data.frame(sc_data1_Test$critical_temp,pred_q)
+#R^2
+RSS=(mean((result$sc_data1_Test.critical_temp - result$pred_q)^2))
+TSS=(mean((sc_data1_Test$critical_temp-(mean(sc_data1_Test$critical_temp)))^2))
+R_square=1-(RSS/TSS)
+print(R_square)
+
+
+```
+```{r}
+library(pls)
+# x=model.matrix(critical_temp~.,sc_data1_Train)[,-1]
+# y=sc_data1_Train$critical_temp
+# x_test=model.matrix(critical_temp~.,sc_data1_Test)[,-1]
+# y_test=sc_data1_Test$critical_temp
+sc_pls=plsr(critical_temp~.,data=sc_data1_Train,scale=TRUE,validation="CV")
+summary(sc_pls)
+pls_pred=predict(sc_pls,sc_data1_Test,ncomp=16)
+
+#R^2
+RSS=(mean((sc_data1_Test$critical_temp-pls_pred)^2))
+TSS=(mean((sc_data1_Test$critical_temp-(mean(sc_data1_Test$critical_temp)))^2))
+R_square=1-(RSS/TSS)
+print(R_square)
+
+
+
+
+
+```
+
+```{r}
+
+library(neuralnet)
+maxs <- apply(sc_data1, 2, max) 
+mins <- apply(sc_data1, 2, min)
+scaled <- as.data.frame(scale(sc_data1, center = mins, scale = maxs - mins))
+
+split=sample.split(scaled,SplitRatio = 0.8)
+sc_data1_Train1=subset(scaled,split=="TRUE")
+sc_data1_Test1=subset(scaled,split=="FALSE")
+
+NN_Model=neuralnet(critical_temp~.,data=sc_data1_Train1,hidden=1,linear.output=TRUE,err.fct="sse")
+plot(NN_Model)
+
+# pred_y=predict(NN_Model,Gr_Stability1_Test,type="response")
+# pred_y[pred_y>=0.5]=1
+# pred_y[pred_y<0.5]=0
+# result=data.frame(Gr_Stability1_Test$stab1,pred_y)
+# table(Gr_Stability1_Test$stab1,pred_y)
+# mean(Gr_Stability1_Test$stab1==pred_y)
+# 
+
+```
+
+
+
+
+
+
